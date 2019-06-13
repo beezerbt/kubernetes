@@ -28,6 +28,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/authentication/serviceaccount"
 	"k8s.io/kubernetes/pkg/security/podsecuritypolicy/seccomp"
+	"k8s.io/kubernetes/test/e2e/framework/auth"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 
 	"github.com/onsi/ginkgo"
 )
@@ -81,13 +83,13 @@ func IsPodSecurityPolicyEnabled(f *Framework) bool {
 	isPSPEnabledOnce.Do(func() {
 		psps, err := f.ClientSet.PolicyV1beta1().PodSecurityPolicies().List(metav1.ListOptions{})
 		if err != nil {
-			Logf("Error listing PodSecurityPolicies; assuming PodSecurityPolicy is disabled: %v", err)
+			e2elog.Logf("Error listing PodSecurityPolicies; assuming PodSecurityPolicy is disabled: %v", err)
 			isPSPEnabled = false
 		} else if psps == nil || len(psps.Items) == 0 {
-			Logf("No PodSecurityPolicies found; assuming PodSecurityPolicy is disabled.")
+			e2elog.Logf("No PodSecurityPolicies found; assuming PodSecurityPolicy is disabled.")
 			isPSPEnabled = false
 		} else {
-			Logf("Found PodSecurityPolicies; assuming PodSecurityPolicy is enabled.")
+			e2elog.Logf("Found PodSecurityPolicies; assuming PodSecurityPolicy is enabled.")
 			isPSPEnabled = true
 		}
 	})
@@ -118,7 +120,7 @@ func createPrivilegedPSPBinding(f *Framework, namespace string) {
 			ExpectNoError(err, "Failed to create PSP %s", podSecurityPolicyPrivileged)
 		}
 
-		if IsRBACEnabled(f) {
+		if auth.IsRBACEnabled(f.ClientSet.RbacV1beta1()) {
 			// Create the Role to bind it to the namespace.
 			_, err = f.ClientSet.RbacV1beta1().ClusterRoles().Create(&rbacv1beta1.ClusterRole{
 				ObjectMeta: metav1.ObjectMeta{Name: podSecurityPolicyPrivileged},
@@ -135,10 +137,10 @@ func createPrivilegedPSPBinding(f *Framework, namespace string) {
 		}
 	})
 
-	if IsRBACEnabled(f) {
+	if auth.IsRBACEnabled(f.ClientSet.RbacV1beta1()) {
 		ginkgo.By(fmt.Sprintf("Binding the %s PodSecurityPolicy to the default service account in %s",
 			podSecurityPolicyPrivileged, namespace))
-		BindClusterRoleInNamespace(f.ClientSet.RbacV1beta1(),
+		err := auth.BindClusterRoleInNamespace(f.ClientSet.RbacV1beta1(),
 			podSecurityPolicyPrivileged,
 			namespace,
 			rbacv1beta1.Subject{
@@ -146,7 +148,8 @@ func createPrivilegedPSPBinding(f *Framework, namespace string) {
 				Namespace: namespace,
 				Name:      "default",
 			})
-		ExpectNoError(WaitForNamedAuthorizationUpdate(f.ClientSet.AuthorizationV1beta1(),
+		ExpectNoError(err)
+		ExpectNoError(auth.WaitForNamedAuthorizationUpdate(f.ClientSet.AuthorizationV1beta1(),
 			serviceaccount.MakeUsername(namespace, "default"), namespace, "use", podSecurityPolicyPrivileged,
 			schema.GroupResource{Group: "extensions", Resource: "podsecuritypolicies"}, true))
 	}

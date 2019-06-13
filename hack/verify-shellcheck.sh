@@ -123,6 +123,13 @@ else
   fi
 fi
 
+# if KUBE_JUNIT_REPORT_DIR is set, disable colorized output.
+# Colorized output causes malformed XML in the JUNIT report.
+SHELLCHECK_COLORIZED_OUTPUT="auto"
+if [[ -n "${KUBE_JUNIT_REPORT_DIR:-}" ]]; then
+  SHELLCHECK_COLORIZED_OUTPUT="never"
+fi
+
 # common arguments we'll pass to shellcheck
 SHELLCHECK_OPTIONS=(
   # allow following sourced files that are not specified in the command,
@@ -131,6 +138,8 @@ SHELLCHECK_OPTIONS=(
   "--external-sources"
   # include our disabled lints
   "--exclude=${SHELLCHECK_DISABLED}"
+  # set colorized output
+  "--color=${SHELLCHECK_COLORIZED_OUTPUT}"
 )
 
 # lint each script, tracking failures
@@ -169,7 +178,7 @@ else
     echo 'checking by adding it to hack/.shellcheck_failures (if your reviewer is okay with it).'
     echo
   } >&2
-  false
+  exit 1
 fi
 
 if [[ ${#not_failing[@]} -gt 0 ]]; then
@@ -181,7 +190,7 @@ if [[ ${#not_failing[@]} -gt 0 ]]; then
     done
     echo
   } >&2
-  false
+  exit 1
 fi
 
 # Check that all failing_packages actually still exist
@@ -199,5 +208,5 @@ if [[ ${#gone[@]} -gt 0 ]]; then
     done
     echo
   } >&2
-  false
+  exit 1
 fi

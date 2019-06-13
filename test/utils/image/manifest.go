@@ -130,6 +130,8 @@ const (
 	GBRedisSlave
 	// Hostexec image
 	Hostexec
+	// InClusterClient image
+	InClusterClient
 	// IpcUtils image
 	IpcUtils
 	// Iperf image
@@ -160,6 +162,8 @@ const (
 	NginxNew
 	// Nonewprivs image
 	Nonewprivs
+	// NonRoot runs with a default user of 1234
+	NonRoot
 	// NoSnatTest image
 	NoSnatTest
 	// NoSnatTestProxy image
@@ -167,6 +171,8 @@ const (
 	// Pause - when these values are updated, also update cmd/kubelet/app/options/container_runtime.go
 	// Pause image
 	Pause
+	// Perl image
+	Perl
 	// Porter image
 	Porter
 	// PortForwardTester image
@@ -194,7 +200,7 @@ const (
 func initImageConfigs() map[int]Config {
 	configs := map[int]Config{}
 	configs[CRDConversionWebhook] = Config{e2eRegistry, "crd-conversion-webhook", "1.13rev2"}
-	configs[AdmissionWebhook] = Config{e2eRegistry, "webhook", "1.14v1"}
+	configs[AdmissionWebhook] = Config{e2eRegistry, "webhook", "1.15v1"}
 	configs[Agnhost] = Config{e2eRegistry, "agnhost", "1.0"}
 	configs[APIServer] = Config{e2eRegistry, "sample-apiserver", "1.10"}
 	configs[AppArmorLoader] = Config{e2eRegistry, "apparmor-loader", "1.0"}
@@ -211,6 +217,7 @@ func initImageConfigs() map[int]Config {
 	configs[GBFrontend] = Config{sampleRegistry, "gb-frontend", "v6"}
 	configs[GBRedisSlave] = Config{sampleRegistry, "gb-redisslave", "v3"}
 	configs[Hostexec] = Config{e2eRegistry, "hostexec", "1.1"}
+	configs[InClusterClient] = Config{e2eRegistry, "inclusterclient", "1.0"}
 	configs[IpcUtils] = Config{e2eRegistry, "ipc-utils", "1.0"}
 	configs[Iperf] = Config{e2eRegistry, "iperf", "1.0"}
 	configs[JessieDnsutils] = Config{e2eRegistry, "jessie-dnsutils", "1.0"}
@@ -226,15 +233,17 @@ func initImageConfigs() map[int]Config {
 	configs[Nginx] = Config{dockerLibraryRegistry, "nginx", "1.14-alpine"}
 	configs[NginxNew] = Config{dockerLibraryRegistry, "nginx", "1.15-alpine"}
 	configs[Nonewprivs] = Config{e2eRegistry, "nonewprivs", "1.0"}
+	configs[NonRoot] = Config{e2eRegistry, "nonroot", "1.0"}
 	configs[NoSnatTest] = Config{e2eRegistry, "no-snat-test", "1.0"}
 	configs[NoSnatTestProxy] = Config{e2eRegistry, "no-snat-test-proxy", "1.0"}
 	// Pause - when these values are updated, also update cmd/kubelet/app/options/container_runtime.go
 	configs[Pause] = Config{gcRegistry, "pause", "3.1"}
+	configs[Perl] = Config{dockerLibraryRegistry, "perl", "5.26"}
 	configs[Porter] = Config{e2eRegistry, "porter", "1.0"}
 	configs[PortForwardTester] = Config{e2eRegistry, "port-forward-tester", "1.0"}
 	configs[Redis] = Config{e2eRegistry, "redis", "1.0"}
 	configs[ResourceConsumer] = Config{e2eRegistry, "resource-consumer", "1.5"}
-	configs[ResourceController] = Config{e2eRegistry, "resource-consumer/controller", "1.0"}
+	configs[ResourceController] = Config{e2eRegistry, "resource-consumer-controller", "1.0"}
 	configs[ServeHostname] = Config{e2eRegistry, "serve-hostname", "1.1"}
 	configs[TestWebserver] = Config{e2eRegistry, "test-webserver", "1.0"}
 	configs[VolumeNFSServer] = Config{e2eRegistry, "volume/nfs", "1.0"}

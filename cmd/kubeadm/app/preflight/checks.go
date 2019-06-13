@@ -143,8 +143,8 @@ func (sc ServiceCheck) Check() (warnings, errorList []error) {
 
 	if !initSystem.ServiceIsEnabled(sc.Service) {
 		warnings = append(warnings,
-			errors.Errorf("%s service is not enabled, please run 'systemctl enable %s.service'",
-				sc.Service, sc.Service))
+			errors.Errorf("%s service is not enabled, please run '%s'",
+				sc.Service, initSystem.EnableCommand(sc.Service)))
 	}
 
 	if sc.CheckIfActive && !initSystem.ServiceIsActive(sc.Service) {
@@ -1008,7 +1008,7 @@ func RunJoinNodeChecks(execer utilsexec.Interface, cfg *kubeadmapi.JoinConfigura
 func RunOptionalJoinNodeChecks(execer utilsexec.Interface, cfg *kubeadmapi.ClusterConfiguration, ignorePreflightErrors sets.String) error {
 	checks := []Checker{}
 
-	// Check if IVPS kube-proxy mode is supported
+	// Check if IPVS kube-proxy mode is supported
 	if cfg.ComponentConfigs.KubeProxy != nil && cfg.ComponentConfigs.KubeProxy.Mode == ipvsutil.IPVSProxyMode {
 		checks = append(checks, IPVSProxierCheck{exec: execer})
 	}
@@ -1088,10 +1088,6 @@ func RunPullImagesCheck(execer utilsexec.Interface, cfg *kubeadmapi.InitConfigur
 // RunChecks runs each check, displays it's warnings/errors, and once all
 // are processed will exit if any errors occurred.
 func RunChecks(checks []Checker, ww io.Writer, ignorePreflightErrors sets.String) error {
-	type checkErrors struct {
-		Name   string
-		Errors []error
-	}
 	var errsBuffer bytes.Buffer
 
 	for _, c := range checks {

@@ -39,11 +39,11 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/pkg/scheduler/algorithm/priorities"
 	schedulerapi "k8s.io/kubernetes/pkg/scheduler/api"
+	framework "k8s.io/kubernetes/pkg/scheduler/framework/v1alpha1"
 	internalcache "k8s.io/kubernetes/pkg/scheduler/internal/cache"
 	internalqueue "k8s.io/kubernetes/pkg/scheduler/internal/queue"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
 	schedulernodeinfo "k8s.io/kubernetes/pkg/scheduler/nodeinfo"
-	pluginsv1alpha1 "k8s.io/kubernetes/pkg/scheduler/plugins/v1alpha1"
 	"k8s.io/kubernetes/pkg/scheduler/util"
 	"k8s.io/kubernetes/pkg/scheduler/volumebinder"
 	utiltrace "k8s.io/utils/trace"
@@ -158,23 +158,24 @@ type genericScheduler struct {
 	priorityMetaProducer     priorities.PriorityMetadataProducer
 	predicateMetaProducer    predicates.PredicateMetadataProducer
 	prioritizers             []priorities.PriorityConfig
-	pluginSet                pluginsv1alpha1.PluginSet
+	framework                framework.Framework
 	extenders                []algorithm.SchedulerExtender
 	lastNodeIndex            uint64
 	alwaysCheckAllPredicates bool
-	nodeInfoSnapshot         internalcache.NodeInfoSnapshot
+	nodeInfoSnapshot         *internalcache.NodeInfoSnapshot
 	volumeBinder             *volumebinder.VolumeBinder
 	pvcLister                corelisters.PersistentVolumeClaimLister
 	pdbLister                algorithm.PDBLister
 	disablePreemption        bool
 	percentageOfNodesToScore int32
+	enableNonPreempting      bool
 }
 
 // snapshot snapshots scheduler cache and node infos for all fit and priority
 // functions.
 func (g *genericScheduler) snapshot() error {
 	// Used for all fit and priority funcs.
-	return g.cache.UpdateNodeInfoSnapshot(&g.nodeInfoSnapshot)
+	return g.cache.UpdateNodeInfoSnapshot(g.nodeInfoSnapshot)
 }
 
 // Schedule tries to schedule the given pod to one of the nodes in the node list.
@@ -313,7 +314,7 @@ func (g *genericScheduler) Preempt(pod *v1.Pod, nodeLister algorithm.NodeLister,
 	if !ok || fitError == nil {
 		return nil, nil, nil, nil
 	}
-	if !podEligibleToPreemptOthers(pod, g.nodeInfoSnapshot.NodeInfoMap) {
+	if !podEligibleToPreemptOthers(pod, g.nodeInfoSnapshot.NodeInfoMap, g.enableNonPreempting) {
 		klog.V(5).Infof("Pod %v/%v is not eligible for more preemption.", pod.Namespace, pod.Name)
 		return nil, nil, nil, nil
 	}
@@ -1156,7 +1157,11 @@ func nodesWherePreemptionMightHelp(nodes []*v1.Node, failedPredicatesMap FailedP
 // considered for preemption.
 // We look at the node that is nominated for this pod and as long as there are
 // terminating pods on the node, we don't consider this for preempting more pods.
-func podEligibleToPreemptOthers(pod *v1.Pod, nodeNameToInfo map[string]*schedulernodeinfo.NodeInfo) bool {
+func podEligibleToPreemptOthers(pod *v1.Pod, nodeNameToInfo map[string]*schedulernodeinfo.NodeInfo, enableNonPreempting bool) bool {
+	if enableNonPreempting && pod.Spec.PreemptionPolicy != nil && *pod.Spec.PreemptionPolicy == v1.PreemptNever {
+		klog.V(5).Infof("Pod %v/%v is not eligible for preemption because it has a preemptionPolicy of %v", pod.Namespace, pod.Name, v1.PreemptNever)
+		return false
+	}
 	nomNodeName := pod.Status.NominatedNodeName
 	if len(nomNodeName) > 0 {
 		if nodeInfo, found := nodeNameToInfo[nomNodeName]; found {
@@ -1206,7 +1211,7 @@ func NewGenericScheduler(
 	predicateMetaProducer predicates.PredicateMetadataProducer,
 	prioritizers []priorities.PriorityConfig,
 	priorityMetaProducer priorities.PriorityMetadataProducer,
-	pluginSet pluginsv1alpha1.PluginSet,
+	framework framework.Framework,
 	extenders []algorithm.SchedulerExtender,
 	volumeBinder *volumebinder.VolumeBinder,
 	pvcLister corelisters.PersistentVolumeClaimLister,
@@ -1214,6 +1219,7 @@ func NewGenericScheduler(
 	alwaysCheckAllPredicates bool,
 	disablePreemption bool,
 	percentageOfNodesToScore int32,
+	enableNonPreempting bool,
 ) ScheduleAlgorithm {
 	return &genericScheduler{
 		cache:                    cache,
@@ -1222,14 +1228,15 @@ func NewGenericScheduler(
 		predicateMetaProducer:    predicateMetaProducer,
 		prioritizers:             prioritizers,
 		priorityMetaProducer:     priorityMetaProducer,
-		pluginSet:                pluginSet,
+		framework:                framework,
 		extenders:                extenders,
-		nodeInfoSnapshot:         internalcache.NewNodeInfoSnapshot(),
+		nodeInfoSnapshot:         framework.NodeInfoSnapshot(),
 		volumeBinder:             volumeBinder,
 		pvcLister:                pvcLister,
 		pdbLister:                pdbLister,
 		alwaysCheckAllPredicates: alwaysCheckAllPredicates,
 		disablePreemption:        disablePreemption,
 		percentageOfNodesToScore: percentageOfNodesToScore,
+		enableNonPreempting:      enableNonPreempting,
 	}
 }

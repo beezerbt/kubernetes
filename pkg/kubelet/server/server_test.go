@@ -338,6 +338,7 @@ func newServerTestWithDebug(enableDebugging, redirectContainerStreaming bool, st
 		fw.fakeKubelet,
 		stats.NewResourceAnalyzer(fw.fakeKubelet, time.Minute),
 		fw.fakeAuth,
+		true,
 		enableDebugging,
 		false,
 		redirectContainerStreaming,
@@ -1665,4 +1666,25 @@ func TestDebuggingDisabledHandlers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
+}
+
+func TestTrimURLPath(t *testing.T) {
+	tests := []struct {
+		path, expected string
+	}{
+		{"", ""},
+		{"//", ""},
+		{"/pods", "pods"},
+		{"pods", "pods"},
+		{"pods/", "pods"},
+		{"good/", "good"},
+		{"pods/probes", "pods"},
+		{"metrics", "metrics"},
+		{"metrics/resource", "metrics/resource"},
+		{"metrics/hello", "metrics/hello"},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expected, trimURLPath(test.path), fmt.Sprintf("path is: %s", test.path))
+	}
 }

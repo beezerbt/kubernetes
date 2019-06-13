@@ -26,10 +26,17 @@ import (
 	"path"
 	"time"
 
+	// Register supported container handlers.
 	_ "github.com/google/cadvisor/container/containerd/install"
 	_ "github.com/google/cadvisor/container/crio/install"
 	_ "github.com/google/cadvisor/container/docker/install"
 	_ "github.com/google/cadvisor/container/systemd/install"
+
+	// Register cloud info providers.
+	// TODO(#76660): Remove this once the cAdvisor endpoints are removed.
+	_ "github.com/google/cadvisor/utils/cloudinfo/aws"
+	_ "github.com/google/cadvisor/utils/cloudinfo/azure"
+	_ "github.com/google/cadvisor/utils/cloudinfo/gce"
 
 	"github.com/google/cadvisor/cache/memory"
 	cadvisormetrics "github.com/google/cadvisor/container"
@@ -75,7 +82,7 @@ func init() {
 	}
 }
 
-func New(imageFsInfoProvider ImageFsInfoProvider, rootPath string, usingLegacyStats bool) (Interface, error) {
+func New(imageFsInfoProvider ImageFsInfoProvider, rootPath string, cgroupRoots []string, usingLegacyStats bool) (Interface, error) {
 	sysFs := sysfs.NewRealSysFs()
 
 	includedMetrics := cadvisormetrics.MetricSet{
@@ -91,10 +98,8 @@ func New(imageFsInfoProvider ImageFsInfoProvider, rootPath string, usingLegacySt
 		includedMetrics[cadvisormetrics.DiskUsageMetrics] = struct{}{}
 	}
 
-	// collect metrics for all cgroups
-	rawContainerCgroupPathPrefixWhiteList := []string{"/"}
 	// Create and start the cAdvisor container manager.
-	m, err := manager.New(memory.New(statsCacheDuration, nil), sysFs, maxHousekeepingInterval, allowDynamicHousekeeping, includedMetrics, http.DefaultClient, rawContainerCgroupPathPrefixWhiteList)
+	m, err := manager.New(memory.New(statsCacheDuration, nil), sysFs, maxHousekeepingInterval, allowDynamicHousekeeping, includedMetrics, http.DefaultClient, cgroupRoots)
 	if err != nil {
 		return nil, err
 	}

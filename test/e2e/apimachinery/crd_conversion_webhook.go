@@ -19,11 +19,12 @@ package apimachinery
 import (
 	"time"
 
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
+
 	apps "k8s.io/api/apps/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	"k8s.io/apiextensions-apiserver/test/integration"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -32,12 +33,15 @@ import (
 	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2edeploy "k8s.io/kubernetes/test/e2e/framework/deployment"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	"k8s.io/kubernetes/test/utils/crd"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 	"k8s.io/utils/pointer"
 
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/gomega"
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	"k8s.io/apiextensions-apiserver/test/integration"
+
 	// ensure libs have a chance to initialize
 	_ "github.com/stretchr/testify/assert"
 )
@@ -57,11 +61,28 @@ var apiVersions = []v1beta1.CustomResourceDefinitionVersion{
 		Name:    "v1",
 		Served:  true,
 		Storage: true,
+		Schema: &v1beta1.CustomResourceValidation{
+			OpenAPIV3Schema: &v1beta1.JSONSchemaProps{
+				Type: "object",
+				Properties: map[string]v1beta1.JSONSchemaProps{
+					"hostPort": {Type: "string"},
+				},
+			},
+		},
 	},
 	{
 		Name:    "v2",
 		Served:  true,
 		Storage: false,
+		Schema: &v1beta1.CustomResourceValidation{
+			OpenAPIV3Schema: &v1beta1.JSONSchemaProps{
+				Type: "object",
+				Properties: map[string]v1beta1.JSONSchemaProps{
+					"host": {Type: "string"},
+					"port": {Type: "string"},
+				},
+			},
+		},
 	},
 }
 
@@ -70,15 +91,32 @@ var alternativeAPIVersions = []v1beta1.CustomResourceDefinitionVersion{
 		Name:    "v1",
 		Served:  true,
 		Storage: false,
+		Schema: &v1beta1.CustomResourceValidation{
+			OpenAPIV3Schema: &v1beta1.JSONSchemaProps{
+				Type: "object",
+				Properties: map[string]v1beta1.JSONSchemaProps{
+					"hostPort": {Type: "string"},
+				},
+			},
+		},
 	},
 	{
 		Name:    "v2",
 		Served:  true,
 		Storage: true,
+		Schema: &v1beta1.CustomResourceValidation{
+			OpenAPIV3Schema: &v1beta1.JSONSchemaProps{
+				Type: "object",
+				Properties: map[string]v1beta1.JSONSchemaProps{
+					"host": {Type: "string"},
+					"port": {Type: "string"},
+				},
+			},
+		},
 	},
 }
 
-var _ = SIGDescribe("CustomResourceConversionWebhook [Feature:CustomResourceWebhookConversion]", func() {
+var _ = SIGDescribe("CustomResourceConversionWebhook", func() {
 	var context *certContext
 	f := framework.NewDefaultFramework("crd-webhook")
 
@@ -104,15 +142,22 @@ var _ = SIGDescribe("CustomResourceConversionWebhook [Feature:CustomResourceWebh
 	})
 
 	ginkgo.It("Should be able to convert from CR v1 to CR v2", func() {
-		testcrd, err := crd.CreateMultiVersionTestCRD(f, "stable.example.com", apiVersions,
-			&v1beta1.WebhookClientConfig{
-				CABundle: context.signingCert,
-				Service: &v1beta1.ServiceReference{
-					Namespace: f.Namespace.Name,
-					Name:      serviceCRDName,
-					Path:      pointer.StringPtr("/crdconvert"),
-					Port:      pointer.Int32Ptr(serviceCRDPort),
-				}})
+		testcrd, err := crd.CreateMultiVersionTestCRD(f, "stable.example.com", func(crd *v1beta1.CustomResourceDefinition) {
+			crd.Spec.Versions = apiVersions
+			crd.Spec.Conversion = &v1beta1.CustomResourceConversion{
+				Strategy: v1beta1.WebhookConverter,
+				WebhookClientConfig: &v1beta1.WebhookClientConfig{
+					CABundle: context.signingCert,
+					Service: &v1beta1.ServiceReference{
+						Namespace: f.Namespace.Name,
+						Name:      serviceCRDName,
+						Path:      pointer.StringPtr("/crdconvert"),
+						Port:      pointer.Int32Ptr(serviceCRDPort),
+					},
+				},
+			}
+			crd.Spec.PreserveUnknownFields = pointer.BoolPtr(false)
+		})
 		if err != nil {
 			return
 		}
@@ -121,15 +166,22 @@ var _ = SIGDescribe("CustomResourceConversionWebhook [Feature:CustomResourceWebh
 	})
 
 	ginkgo.It("Should be able to convert a non homogeneous list of CRs", func() {
-		testcrd, err := crd.CreateMultiVersionTestCRD(f, "stable.example.com", apiVersions,
-			&v1beta1.WebhookClientConfig{
-				CABundle: context.signingCert,
-				Service: &v1beta1.ServiceReference{
-					Namespace: f.Namespace.Name,
-					Name:      serviceCRDName,
-					Path:      pointer.StringPtr("/crdconvert"),
-					Port:      pointer.Int32Ptr(serviceCRDPort),
-				}})
+		testcrd, err := crd.CreateMultiVersionTestCRD(f, "stable.example.com", func(crd *v1beta1.CustomResourceDefinition) {
+			crd.Spec.Versions = apiVersions
+			crd.Spec.Conversion = &v1beta1.CustomResourceConversion{
+				Strategy: v1beta1.WebhookConverter,
+				WebhookClientConfig: &v1beta1.WebhookClientConfig{
+					CABundle: context.signingCert,
+					Service: &v1beta1.ServiceReference{
+						Namespace: f.Namespace.Name,
+						Name:      serviceCRDName,
+						Path:      pointer.StringPtr("/crdconvert"),
+						Port:      pointer.Int32Ptr(serviceCRDPort),
+					},
+				},
+			}
+			crd.Spec.PreserveUnknownFields = pointer.BoolPtr(false)
+		})
 		if err != nil {
 			return
 		}
@@ -168,7 +220,7 @@ func createAuthReaderRoleBindingForCRDConversion(f *framework.Framework, namespa
 		},
 	})
 	if err != nil && errors.IsAlreadyExists(err) {
-		framework.Logf("role binding %s already exists", roleBindingCRDName)
+		e2elog.Logf("role binding %s already exists", roleBindingCRDName)
 	} else {
 		framework.ExpectNoError(err, "creating role binding %s:webhook to access configMap", namespace)
 	}
@@ -254,9 +306,9 @@ func deployCustomResourceWebhookAndService(f *framework.Framework, image string,
 	deployment, err := client.AppsV1().Deployments(namespace).Create(d)
 	framework.ExpectNoError(err, "creating deployment %s in namespace %s", deploymentCRDName, namespace)
 	ginkgo.By("Wait for the deployment to be ready")
-	err = framework.WaitForDeploymentRevisionAndImage(client, namespace, deploymentCRDName, "1", image)
+	err = e2edeploy.WaitForDeploymentRevisionAndImage(client, namespace, deploymentCRDName, "1", image)
 	framework.ExpectNoError(err, "waiting for the deployment of image %s in %s in %s to complete", image, deploymentName, namespace)
-	err = framework.WaitForDeploymentComplete(client, deployment)
+	err = e2edeploy.WaitForDeploymentComplete(client, deployment)
 	framework.ExpectNoError(err, "waiting for the deployment status valid", image, deploymentCRDName, namespace)
 
 	ginkgo.By("Deploying the webhook service")
@@ -372,6 +424,8 @@ func testCRListConversion(f *framework.Framework, testCrd *crd.TestCrd) {
 	// After changing a CRD, the resources for versions will be re-created that can be result in
 	// cancelled connection (e.g. "grpc connection closed" or "context canceled").
 	// Just retrying fixes that.
+	//
+	// TODO: we have to wait for the storage version to become effective. Storage version changes are not instant.
 	for i := 0; i < 5; i++ {
 		_, err = customResourceClients["v1"].Create(crInstance, metav1.CreateOptions{})
 		if err == nil {
